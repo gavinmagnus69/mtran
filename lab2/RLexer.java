@@ -403,8 +403,6 @@ public class RLexer {
         }
 
         public static void main(String[] args) {
-            // Example usage
-            // String rCode = readFile("./code.txt");
             try {
                 String rCode = readFile("./code.r");
                 RLexer lexer = new RLexer(rCode);
@@ -421,31 +419,5 @@ public class RLexer {
                 System.err.println("Error during lexical analysis: " + e.getMessage());
                 e.printStackTrace(); // Print the stack trace for debugging
             }
-            // String rCode =
-            //         "x <- 10\n" +
-            //         "y = 20\n" +
-            //         "z <- x + y\n" +
-            //         "if (z > 15) {\n" +
-            //         "  print(\"z is greater than 15\")\n" +
-            //         "} else {\n" +
-            //         "  print(\"z is not greater than 15\")\n" +
-            //         "}\n" +
-            //         "my_string <- \"Hello, world!\\nThis is a string.\"\n"+
-            //         "my_list$element # This is a comment\n"+
-            //         "a <- 1:10\n" +
-            //         "b <- 2.5e-3\n"+
-            //         "c <- TRUE\n"+
-            //         "d <- NULL\n"+
-            //         "e <- function(x, y) { x + y }\n"+
-            //         "result <- e(3,4)\n" +
-            //         "matrix_mult <- matrix(1:9, nrow=3) + matrix(10:18, nrow=3)\n" +
-            //         "int_div <- 10 + 3\n"+
-            //         "mod_res <- 10 / 3\n"+
-            //         "ellipsis_example <- function(x, ...) { print(x); print(list(...)) }\n"+
-            //         "ellipsis_example(1, 2, 3, 4)\n" +
-            //         "invalid_modulo <- 5 %invalid% 2\n" +  //test invalid modulo
-            //         "unterminated_string <- \"This string is not closed\n" +
-            //          "another_variable.with.dots <- 3.14\n" +
-            //          "backtick_variable <- `my variable with spaces`\n";
         }
     }
