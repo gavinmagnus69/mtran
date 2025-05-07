@@ -57,18 +57,10 @@ public class Interpreter {
         }
 
         if (expr instanceof Parser.BlockExpression block) {
-            Environment previous = current;
-            current = new Environment(current);
             Object result = null;
-            try {
-                for (Parser.Expression inner : block.expressions) {
-                    result = evaluate(inner);
-                }
-            } catch (ReturnValue ret) {
-                current = previous;
-                throw ret;
+            for (Parser.Expression inner : block.expressions) {
+                result = evaluate(inner);
             }
-            current = previous;
             return result;
         }
 
@@ -114,39 +106,55 @@ public class Interpreter {
             if (!(call.function instanceof Parser.Identifier id)) {
                 throw new RuntimeException("Can only call named functions.");
             }
-
+        
             String funcName = id.token.value;
+        
+            if (funcName.equals("return")) {
+                if (call.arguments.size() != 1) {
+                    throw new RuntimeException("return() expects exactly 1 argument.");
+                }
+                Object value = evaluate(call.arguments.get(0));
+                throw new ReturnValue(value);
+            }
 
             if (funcName.equals("print")) {
                 for (Parser.Expression arg : call.arguments) {
                     Object value = evaluate(arg);
-                    System.out.println(value);
+                    if (value instanceof FunctionValue) {
+                        System.out.println("<function>");
+                    } else {
+                        System.out.println(value);
+                    }
                 }
                 return null;
             }
 
-            FunctionValue function = current.getFunction(funcName);
+            Object funcObj = current.get(funcName);
+            if (!(funcObj instanceof FunctionValue function)) {
+                throw new RuntimeException("'" + funcName + "' is not a function.");
+            }
+        
             if (call.arguments.size() != function.parameters.size()) {
                 throw new RuntimeException("Function '" + funcName + "' expects " + function.parameters.size() + " arguments.");
             }
-
+        
             Environment functionEnv = new Environment(function.closure);
             for (int i = 0; i < function.parameters.size(); i++) {
                 String paramName = function.parameters.get(i).value;
                 Object argValue = evaluate(call.arguments.get(i));
                 functionEnv.define(paramName, argValue);
             }
-
+        
             Environment previous = current;
             current = functionEnv;
-
+        
             try {
                 evaluate(function.body);
             } catch (ReturnValue ret) {
                 current = previous;
                 return ret.value;
             }
-
+        
             current = previous;
             return null;
         }

@@ -1,10 +1,9 @@
 
 import java.util.*;
-
 public class Scope {
     private final Scope parent;
     private final Map<String, Type> variables = new HashMap<>();
-    private final Map<String, FunctionSymbol> functions = new HashMap<>();
+    private final Map<String, List<String>> functionParameters = new HashMap<>();
 
     public Scope(Scope parent) {
         this.parent = parent;
@@ -14,23 +13,23 @@ public class Scope {
         variables.put(name, type);
     }
 
-    public boolean isVariableDefined(String name) {
-        return lookupVariable(name) != null;
-    }
-
     public Type lookupVariable(String name) {
         if (variables.containsKey(name)) return variables.get(name);
         if (parent != null) return parent.lookupVariable(name);
         return null;
     }
 
-    public void defineFunction(FunctionSymbol symbol) {
-        functions.put(symbol.name, symbol);
+    public boolean isVariableDefined(String name) {
+        return lookupVariable(name) != null;
     }
 
-    public FunctionSymbol lookupFunction(String name) {
-        if (functions.containsKey(name)) return functions.get(name);
-        if (parent != null) return parent.lookupFunction(name);
+    public void defineFunctionMetadata(String name, List<String> paramNames) {
+        functionParameters.put(name, paramNames);
+    }
+
+    public List<String> getFunctionParameters(String name) {
+        if (functionParameters.containsKey(name)) return functionParameters.get(name);
+        if (parent != null) return parent.getFunctionParameters(name);
         return null;
     }
 

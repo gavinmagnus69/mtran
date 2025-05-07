@@ -5,9 +5,9 @@ public class SemanticAnalyzer {
     private Scope currentScope = new Scope(null);
     public SemanticAnalyzer() {
         // Global scope
-        currentScope.defineFunction(new FunctionSymbol("return", List.of("value")));
-        currentScope.defineFunction(new FunctionSymbol("print", List.of("x")));
-        currentScope.defineFunction(new FunctionSymbol("length", List.of("x")));
+        currentScope.defineVariable("return", Type.FUNCTION);
+        currentScope.defineVariable("print", Type.FUNCTION);
+        currentScope.defineVariable("length", Type.FUNCTION);
     }
 
     public void analyze(Parser.Expression expr) {
@@ -58,22 +58,30 @@ public class SemanticAnalyzer {
 
 
             if (assign.value instanceof Parser.FunctionExpression funcExpr) {
-                // Define function name first (so it's visible in body)
-                currentScope.defineFunction(new FunctionSymbol(varName,
-                    funcExpr.parameters.stream().map(t -> t.value).toList()));
-        
-                // Analyze the function body in a new scope
+                Type valueType = Type.FUNCTION;
+                currentScope.defineVariable(varName, valueType);            
+                List<String> paramNames = funcExpr.parameters.stream()
+                    .map(t -> t.value)
+                    .toList();
+                currentScope.defineFunctionMetadata(varName, paramNames);
+                // Analyze body
                 enterScope();
                 for (RLexer3.Token param : funcExpr.parameters) {
                     currentScope.defineVariable(param.value, Type.UNKNOWN);
                 }
                 analyzeExpression(funcExpr.body);
                 exitScope();
-        
-                currentScope.defineVariable(varName, Type.FUNCTION); // optional
                 return Type.FUNCTION;
             }
             Type valueType = analyzeExpression(assign.value);
+            // Improve type inference
+            if (assign.value instanceof Parser.FunctionExpression) {
+                valueType = Type.FUNCTION;
+            }
+            if (assign.value instanceof Parser.FunctionCall) {
+                // Optional: smarter inference
+                valueType = Type.FUNCTION;
+            }
             currentScope.defineVariable(varName, valueType);
             return valueType;
         }
@@ -91,37 +99,49 @@ public class SemanticAnalyzer {
         }
 
         if (expr instanceof Parser.FunctionCall call) {
-            // Check function name
             if (!(call.function instanceof Parser.Identifier id)) {
                 Errors.report("Cannot call non-identifier as function.");
                 return Type.UNKNOWN;
             }
-
+        
             String funcName = id.token.value;
-            FunctionSymbol func = currentScope.lookupFunction(funcName);
+            // Handle built-ins
+            if (funcName.equals("return")) {
+                if (call.arguments.size() != 1) {
+                    Errors.report("return() expects exactly one argument.");
+                } else {
+                    analyzeExpression(call.arguments.get(0));
+                }
+                return Type.UNKNOWN;
+            }
+        
+            if (funcName.equals("print") || funcName.equals("length")) {
+                for (Parser.Expression arg : call.arguments) {
+                    analyzeExpression(arg);
+                }
+                return Type.UNKNOWN;
+            }
             Type variableType = currentScope.lookupVariable(funcName);
-            if (func == null && (variableType != Type.FUNCTION)) {
-                Errors.report("Function '" + funcName + "' is not defined.");
-                return Type.UNKNOWN;
-            }
-            if (func == null) {
+            if (variableType == null || variableType != Type.FUNCTION) {
                 Errors.report("Function '" + funcName + "' is not defined.");
                 return Type.UNKNOWN;
             }
 
-            int expected = func.parameters.size();
-            int actual = call.arguments.size();
-            if (expected != actual) {
-                Errors.report("Function '" + funcName + "' expects " + expected + " arguments, got " + actual);
+            List<String> paramNames = currentScope.getFunctionParameters(funcName);
+            if (paramNames != null) {
+                int expected = paramNames.size();
+                int actual = call.arguments.size();
+                if (expected != actual) {
+                    Errors.report("Function '" + funcName + "' expects " + expected + " arguments, got " + actual);
+                }
             }
-
+        
             for (Parser.Expression arg : call.arguments) {
                 analyzeExpression(arg);
             }
-
+        
             return Type.UNKNOWN;
         }
-
         if (expr instanceof Parser.FunctionExpression funcExpr) {
             enterScope();
             for (RLexer3.Token param : funcExpr.parameters) {

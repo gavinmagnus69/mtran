@@ -3,7 +3,7 @@ import java.util.*;
 public class Environment {
     private final Environment parent;
     private final Map<String, Object> variables = new HashMap<>();
-    private final Map<String, FunctionValue> functions = new HashMap<>();
+    // private final Map<String, FunctionValue> functions = new HashMap<>();
 
 
 
@@ -30,21 +30,22 @@ public class Environment {
         }
     }
 
+
     public Object get(String name) {
         if (variables.containsKey(name)) return variables.get(name);
         if (parent != null) return parent.get(name);
         throw new RuntimeException("Undefined variable '" + name + "'");
     }
 
-    public void defineFunction(String name, FunctionValue func) {
-        functions.put(name, func);
-    }
+    // public void defineFunction(String name, FunctionValue func) {
+    //     functions.put(name, func);
+    // }
 
-    public FunctionValue getFunction(String name) {
-        if (functions.containsKey(name)) return functions.get(name);
-        if (parent != null) return parent.getFunction(name);
-        throw new RuntimeException("Function '" + name + "' is not defined.");
-    }
+    // public FunctionValue getFunction(String name) {
+    //     if (functions.containsKey(name)) return functions.get(name);
+    //     if (parent != null) return parent.getFunction(name);
+    //     throw new RuntimeException("Function '" + name + "' is not defined.");
+    // }
 
     public boolean isDefined(String name) {
         return variables.containsKey(name) || (parent != null && parent.isDefined(name));
