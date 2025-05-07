@@ -1,3 +1,4 @@
-for (i in 1:5) {
-    print(i)
+add <- function(x, y) {
+  z <- x + y
+  return(z)
 }

@@ -67,6 +67,14 @@ public class Main {
                 for (Parser.Expression inner : block.expressions) {
                     print(inner, indent + 2);
                 }
+            } else if (expr instanceof Parser.FunctionExpression func) {
+                println(indent, "Function:");
+                println(indent + 2, "Parameters:");
+                for (RLexer3.Token param : func.parameters) {
+                    println(indent + 4, param.value);
+                }
+                println(indent + 2, "Body:");
+                print(func.body, indent + 4);
             } else {
                 println(indent, "Unknown expression type: " + expr.getClass().getSimpleName());
             }
@@ -80,7 +88,7 @@ public class Main {
         try {
             /////////////////////////////////////
             /// LEXER
-            String rCode = RLexer3.readFile("./lex.r");
+            String rCode = RLexer3.readFile("./test.r");
             RLexer3 lexer = new RLexer3(rCode);
             List<RLexer3.Token> tokens = lexer.lex();
             RLexer3.printTokenLineByLine(tokens);

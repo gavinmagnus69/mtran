@@ -7,10 +7,8 @@ import java.util.*;
 
 
 public class Parser {
-
     public abstract class AstNode {}
     public abstract class Expression extends AstNode {}
-
     public class NumberLiteral extends Expression {
         public final RLexer3.Token token;
         public NumberLiteral(RLexer3.Token token) {
@@ -53,6 +51,15 @@ public class Parser {
             this.target = target;
             this.operator = operator;
             this.value = value;
+        }
+    }
+    public class FunctionExpression extends Expression {
+        public final List<RLexer3.Token> parameters;
+        public final BlockExpression body;
+    
+        public FunctionExpression(List<RLexer3.Token> parameters, BlockExpression body) {
+            this.parameters = parameters;
+            this.body = body;
         }
     }
     public class FunctionCall extends Expression {
@@ -190,9 +197,31 @@ public class Parser {
         return expr;
     }
 
-
-
+    
     private Expression primary() {
+        if (match(RLexer3.TokenType.FUNCTION)) {
+            consume(RLexer3.TokenType.LEFT_PAREN, "Expected '(' after 'function'.");
+    
+            List<RLexer3.Token> parameters = new ArrayList<>();
+    
+            if (!check(RLexer3.TokenType.RIGHT_PAREN)) {
+                do {
+                    RLexer3.Token param = consume(RLexer3.TokenType.IDENTIFIER, "Expected parameter name.");
+                    parameters.add(param);
+                } while (match(RLexer3.TokenType.COMMA));
+            }
+    
+            consume(RLexer3.TokenType.RIGHT_PAREN, "Expected ')' after parameters.");
+    
+            // The function body should be a block expression
+            Expression bodyExpr = expression();
+    
+            if (!(bodyExpr instanceof BlockExpression)) {
+                throw error("Expected block '{...}' as function body.");
+            }
+    
+            return new FunctionExpression(parameters, (BlockExpression) bodyExpr);
+        }
         if (match(RLexer3.TokenType.NUMERIC_LITERAL)) {
             return new NumberLiteral(previous());
         }
@@ -236,8 +265,6 @@ public class Parser {
             this.token = token;
         }
     }
-
-
     private Expression ifExpression() {
         consume(RLexer3.TokenType.LEFT_PAREN, "Expect '(' after 'if'.");
         Expression condition = expression();
@@ -252,7 +279,6 @@ public class Parser {
 
         return new IfExpression(condition, thenBranch, elseBranch);
     }
-
     private Expression whileExpression() {
         consume(RLexer3.TokenType.LEFT_PAREN, "Expect '(' after 'while'.");
         Expression condition = expression();
@@ -260,7 +286,6 @@ public class Parser {
         Expression body = expression();
         return new WhileExpression(condition, body);
     }
-
     private Expression forExpression() {
         consume(RLexer3.TokenType.LEFT_PAREN, "Expect '(' after 'for'.");
         RLexer3.Token variable = consume(RLexer3.TokenType.IDENTIFIER, "Expect loop variable.");
@@ -270,7 +295,6 @@ public class Parser {
         Expression body = expression();
         return new ForExpression(variable, iterable, body);
     }
-
     private Expression blockExpression() {
         List<Expression> expressions = new ArrayList<>();
         while (!check(RLexer3.TokenType.RIGHT_BRACE) && !isAtEnd()) {
@@ -323,10 +347,6 @@ public class Parser {
     private RuntimeException error(String message) {
         return new ParseError(peek(), message);    
     }
-
-
-
-
     private void synchronize() {
         advance();
 
@@ -345,7 +365,4 @@ public class Parser {
             advance();
         }
     }
-
-
-
 }
