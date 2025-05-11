@@ -1,3 +1,5 @@
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.*;
 
 public class Interpreter {
@@ -7,13 +9,18 @@ public class Interpreter {
 
     public void interpret(Parser.Expression root) {
         try {
-            evaluate(root);
+            if(evaluate(root) == null) {
+                return;
+            }
         } catch (RuntimeException e) {
             System.err.println("[Runtime Error] " + e.getMessage());
         }
     }
 
     private Object evaluate(Parser.Expression expr) {
+        if(!checkParseErrors()){
+            return null;
+        }
         if (expr instanceof Parser.NumberLiteral num) {
             return Double.parseDouble(num.token.value);
         }
@@ -162,6 +169,15 @@ public class Interpreter {
         throw new RuntimeException("Unknown expression type: " + expr.getClass().getSimpleName());
     }
 
+    private boolean checkParseErrors() {
+         try {
+            RLexer3.checkAllTockens();
+            return false;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
     private boolean asBoolean(Object value) {
         if (value instanceof Boolean b) return b;
         if (value instanceof Double d) return d != 0;

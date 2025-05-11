@@ -113,6 +113,16 @@ public class Parser {
         }
     }
 
+    public class MemberAccess extends Expression {
+        public final Expression object;
+        public final RLexer3.Token member;
+
+        public MemberAccess(Expression object, RLexer3.Token member) {
+            this.object = object;
+            this.member = member;
+        }
+    }
+
     private final List<RLexer3.Token> tokens;
     private int current = 0;
 
@@ -177,6 +187,28 @@ public class Parser {
         return expr;
     }
 
+    private Expression postfix(Expression expr) {
+        while (true) {
+            if (match(RLexer3.TokenType.MEMBER)) {  // $
+                RLexer3.Token member = consume(RLexer3.TokenType.IDENTIFIER, "Expect member name after '$'.");
+                expr = new MemberAccess(expr, member);
+            } else if (match(RLexer3.TokenType.LEFT_PAREN)) {
+                List<Expression> args = new ArrayList<>();
+                if (!check(RLexer3.TokenType.RIGHT_PAREN)) {
+                    do {
+                        args.add(expression());
+                    } while (match(RLexer3.TokenType.COMMA));
+                }
+                consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
+                expr = new FunctionCall(expr, args);
+            } else {
+                break;
+            }
+        }
+        return expr;
+    }
+
+
     private Expression multiplicative() {
         Expression expr = primary();
 
@@ -237,6 +269,10 @@ public class Parser {
     
             return new FunctionExpression(parameters, (BlockExpression) bodyExpr);
         }
+        if (match(RLexer3.TokenType.TRUE, RLexer3.TokenType.FALSE, RLexer3.TokenType.NULL,
+            RLexer3.TokenType.NA, RLexer3.TokenType.INF, RLexer3.TokenType.NAN)) {
+            return new Identifier(previous()); 
+        }
         if (match(RLexer3.TokenType.NUMERIC_LITERAL)) {
             return new NumberLiteral(previous());
         }
@@ -258,14 +294,14 @@ public class Parser {
                 consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
                 return new FunctionCall(new Identifier(name), args);
             }
-
-            return new Identifier(name);
+            Expression expr = new Identifier(name);
+            return postfix(expr);
         }
 
         if (match(RLexer3.TokenType.LEFT_PAREN)) {
             Expression expr = expression();
             consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after expression.");
-            return expr;
+            return postfix(expr);
         }
 
         throw error("Expected expression.");

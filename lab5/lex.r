@@ -22,10 +22,7 @@
     print("x is small")
   }
 
-  while (x < 10) {
-    x <- x + 1
-    print(x)
-  }
+
 
   for (i in 1:5) {
     print(i)

@@ -1,8 +1,6 @@
-
-
-
 import java.io.*;
 import java.util.*;
+import java.lang.Thread;
 
 public class RLexer3 {
 
@@ -10,7 +8,6 @@ public class RLexer3 {
     public enum TokenType {
         // Keywords
         IF, ELSE, WHILE, FOR, IN, REPEAT, BREAK, NEXT, FUNCTION, TRUE, FALSE, NULL, NA, INF, NAN,
-
         // Operators
         ASSIGN_LEFT, ASSIGN_RIGHT, ASSIGN_EQUAL,  // <-, ->, =
         PLUS, MINUS, MULTIPLY, DIVIDE, POWER, MODULO, // +, -, *, /, ^, %%
@@ -23,19 +20,14 @@ public class RLexer3 {
         AT, // @ (slot access)
         TILDE, // ~ (formula)
         QUESTION_MARK, // ? (help)
-         
-
         // Symbols
         LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE, LEFT_BRACKET, RIGHT_BRACKET,
         COMMA, SEMICOLON, COLON,
-
         // Literals
         IDENTIFIER, NUMERIC_LITERAL, STRING_LITERAL, COMMENT,
-
         // Special
         ELLIPSIS, // ... (variable arguments)
         EOF, // End of File
-
         // Error
         ERROR // For lexical errors
     }
@@ -83,9 +75,19 @@ public class RLexer3 {
             columnNumber = 1; // Reset column number for the next line
         }
         addToken(TokenType.EOF, ""); // Add EOF token
+        removeCommentTokens();
         return tokens;
     }
 
+    private void removeCommentTokens() {
+        List<Token> newTokenList = new ArrayList<>();
+        for(Token token : tokens) {
+            if(token.type != TokenType.COMMENT) {
+                newTokenList.add(token);
+            }
+        }
+        tokens = newTokenList;
+    }
     // Process a single line of input
     private void processLine(String line) {
         int currentPosition = 0;
@@ -215,6 +217,13 @@ public class RLexer3 {
         }
         return currentPosition;
     }
+    public void PrintLexicalErrors() {
+        for(Token token : tokens) {
+            if(token.type == TokenType.ERROR) {
+                System.out.println(token);
+            }
+        }
+    }
 
     private int processOperatorOrSymbol(String line, int start) {
         int currentPosition = start;
@@ -238,28 +247,17 @@ public class RLexer3 {
             case '^': addToken(TokenType.POWER, "^"); currentPosition++; columnNumber++; break;
             case '%':
                 if (currentPosition + 1 < line.length() && line.charAt(currentPosition + 1) == '%') {
+                    addToken(TokenType.MODULO, "%%");
                     currentPosition += 2;
                     columnNumber += 2;
-
-                    int modStart = currentPosition;
-                    while (currentPosition < line.length() && line.charAt(currentPosition) != '%') {
-                        currentPosition++;
-                        columnNumber++;
-                    }
-                    if (currentPosition + 1 < line.length() && line.charAt(currentPosition + 1) == '%') {
-                        String modString = line.substring(modStart, currentPosition);
-                        switch (modString) {
-                            case "": addToken(TokenType.MODULO, "%%"); break;
-                            case "/": addToken(TokenType.INTEGER_DIVIDE, "%/%"); break;
-                            case "*": addToken(TokenType.MATRIX_MULTIPLY, "%*%"); break;
-                            default:
-                                addErrorToken("Invalid modulo operator: %" + modString + "%");
-                        }
-                        currentPosition += 2;
-                        columnNumber += 2;
-                    } else {
-                        addErrorToken("Unterminated modulo operator: %%" + line.substring(modStart, line.length()));
-                    }
+                } else if (currentPosition + 2 < line.length() && line.charAt(currentPosition + 1) == '/' && line.charAt(currentPosition + 2) == '%') {
+                    addToken(TokenType.INTEGER_DIVIDE, "%/%");
+                    currentPosition += 3;
+                    columnNumber += 3;
+                } else if (currentPosition + 2 < line.length() && line.charAt(currentPosition + 1) == '*' && line.charAt(currentPosition + 2) == '%') {
+                    addToken(TokenType.MATRIX_MULTIPLY, "%*%");
+                    currentPosition += 3;
+                    columnNumber += 3;
                 } else {
                     addErrorToken("Invalid operator: %");
                     currentPosition++;
@@ -459,6 +457,24 @@ public class RLexer3 {
         tokens.add(new Token(TokenType.ERROR, message, lineNumber + 1, columnNumber));
     }
 
+    public static void checkAllTockens() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("Rscript", "test.r");
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = in.readLine()) != null) {
+                Thread.sleep(5);
+                System.out.println(line);
+            }
+            int exitCode = process.waitFor();
+            // System.out.println("Exited with code: " + exitCode);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     // Method to print tokens grouped by category
     public void printGroupedTokens() {
         Map<String, List<Token>> groupedTokens = new TreeMap<>();
@@ -536,287 +552,4 @@ public class RLexer3 {
         }
     }
 
-
-    public static class ASTNode {
-        public final String type;
-        public final String value;
-        public final List<ASTNode> children;
-    
-        public ASTNode(String type, String value) {
-            this.type = type;
-            this.value = value;
-            this.children = new ArrayList<>();
-        }
-    
-        public void addChild(ASTNode child) {
-            children.add(child);
-        }
-    
-        @Override
-        public String toString() {
-            return toString(0);
-        }
-    
-        private String toString(int indent) {
-            StringBuilder sb = new StringBuilder();
-            sb.append(" ".repeat(indent)).append(type);
-            if (value != null) {
-                sb.append(": ").append(value);
-            }
-            sb.append("\n");
-            for (ASTNode child : children) {
-                sb.append(child.toString(indent + 2));
-            }
-            return sb.toString();
-        }
-    }
-
-
-    public static class Parser {
-        private final List<Token> tokens;
-        private int position;
-    
-        public Parser(List<Token> tokens) {
-            this.tokens = tokens;
-            this.position = 0;
-        }
-    
-        public ASTNode parse() {
-            ASTNode root = new ASTNode("Program", null);
-            while (position < tokens.size() && tokens.get(position).type != TokenType.EOF) {
-                root.addChild(parseStatement());
-            }
-            return root;
-        }
-    
-        private ASTNode parseStatement() {
-            Token currentToken = tokens.get(position);
-            switch (currentToken.type) {
-                case IF:
-                    return parseIfStatement();
-                case WHILE:
-                    return parseWhileStatement();
-                case FOR:
-                    return parseForStatement();
-                case FUNCTION:
-                    return parseFunctionDeclaration();
-                case IDENTIFIER:
-                    return parseAssignment();
-                default:
-                    return parseExpression();
-            }
-        }
-    
-        private ASTNode parseIfStatement() {
-            ASTNode node = new ASTNode("IfStatement", null);
-            match(TokenType.IF);
-            match(TokenType.LEFT_PAREN);
-            node.addChild(parseExpression());
-            match(TokenType.RIGHT_PAREN);
-            node.addChild(parseBlock());
-            if (tokens.get(position).type == TokenType.ELSE) {
-                match(TokenType.ELSE);
-                node.addChild(parseBlock());
-            }
-            return node;
-        }
-    
-        private ASTNode parseWhileStatement() {
-            ASTNode node = new ASTNode("WhileStatement", null);
-            match(TokenType.WHILE);
-            match(TokenType.LEFT_PAREN);
-            node.addChild(parseExpression());
-            match(TokenType.RIGHT_PAREN);
-            node.addChild(parseBlock());
-            return node;
-        }
-    
-        private ASTNode parseForStatement() {
-            ASTNode node = new ASTNode("ForStatement", null);
-            match(TokenType.FOR);
-            match(TokenType.LEFT_PAREN);
-            node.addChild(parseAssignment());
-            match(TokenType.SEMICOLON);
-            node.addChild(parseExpression());
-            match(TokenType.SEMICOLON);
-            node.addChild(parseAssignment());
-            match(TokenType.RIGHT_PAREN);
-            node.addChild(parseBlock());
-            return node;
-        }
-    
-        private ASTNode parseFunctionDeclaration() {
-            ASTNode node = new ASTNode("FunctionDeclaration", null);
-            match(TokenType.FUNCTION);
-            Token identifier = tokens.get(position++);
-            node.addChild(new ASTNode("Identifier", identifier.value));
-            match(TokenType.LEFT_PAREN);
-            while (tokens.get(position).type != TokenType.RIGHT_PAREN) {
-                node.addChild(new ASTNode("Parameter", tokens.get(position++).value));
-                if (tokens.get(position).type == TokenType.COMMA) {
-                    match(TokenType.COMMA);
-                }
-            }
-            match(TokenType.RIGHT_PAREN);
-            node.addChild(parseBlock());
-            return node;
-        }
-    
-        private ASTNode parseAssignment() {
-            ASTNode node = new ASTNode("Assignment", null);
-            Token identifier = tokens.get(position++);
-            node.addChild(new ASTNode("Identifier", identifier.value));
-            match(TokenType.ASSIGN_EQUAL);
-            node.addChild(parseExpression());
-            return node;
-        }
-    
-        private ASTNode parseExpression() {
-            ASTNode node = new ASTNode("Expression", null);
-            node.addChild(parseLogicalOr());
-            return node;
-        }
-    
-        private ASTNode parseLogicalOr() {
-            ASTNode node = new ASTNode("LogicalOr", null);
-            node.addChild(parseLogicalAnd());
-            while (position < tokens.size() && tokens.get(position).type == TokenType.LOGICAL_OR) {
-                Token operator = tokens.get(position++);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseLogicalAnd());
-            }
-            return node;
-        }
-    
-        private ASTNode parseLogicalAnd() {
-            ASTNode node = new ASTNode("LogicalAnd", null);
-            node.addChild(parseEquality());
-            while (position < tokens.size() && tokens.get(position).type == TokenType.LOGICAL_AND) {
-                Token operator = tokens.get(position++);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseEquality());
-            }
-            return node;
-        }
-    
-        private ASTNode parseEquality() {
-            ASTNode node = new ASTNode("Equality", null);
-            node.addChild(parseRelational());
-            while (position < tokens.size() && (tokens.get(position).type == TokenType.EQ || tokens.get(position).type == TokenType.NE)) {
-                Token operator = tokens.get(position++);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseRelational());
-            }
-            return node;
-        }
-    
-        private ASTNode parseRelational() {
-            ASTNode node = new ASTNode("Relational", null);
-            node.addChild(parseAdditive());
-            while (position < tokens.size() && (tokens.get(position).type == TokenType.LT || tokens.get(position).type == TokenType.GT || tokens.get(position).type == TokenType.LE || tokens.get(position).type == TokenType.GE)) {
-                Token operator = tokens.get(position++);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseAdditive());
-            }
-            return node;
-        }
-    
-        private ASTNode parseAdditive() {
-            ASTNode node = new ASTNode("Additive", null);
-            node.addChild(parseMultiplicative());
-            while (position < tokens.size() && (tokens.get(position).type == TokenType.PLUS || tokens.get(position).type == TokenType.MINUS)) {
-                Token operator = tokens.get(position++);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseMultiplicative());
-            }
-            return node;
-        }
-    
-        private ASTNode parseMultiplicative() {
-            ASTNode node = new ASTNode("Multiplicative", null);
-            node.addChild(parseUnary());
-            while (position < tokens.size() && (tokens.get(position).type == TokenType.MULTIPLY || tokens.get(position).type == TokenType.DIVIDE || tokens.get(position).type == TokenType.MODULO || tokens.get(position).type == TokenType.INTEGER_DIVIDE || tokens.get(position).type == TokenType.MATRIX_MULTIPLY)) {
-                Token operator = tokens.get(position++);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseUnary());
-            }
-            return node;
-        }
-    
-        private ASTNode parseUnary() {
-            if (position < tokens.size() && (tokens.get(position).type == TokenType.PLUS || tokens.get(position).type == TokenType.MINUS || tokens.get(position).type == TokenType.LOGICAL_NOT)) {
-                Token operator = tokens.get(position++);
-                ASTNode node = new ASTNode("Unary", null);
-                node.addChild(new ASTNode("Operator", operator.value));
-                node.addChild(parseUnary());
-                return node;
-            } else {
-                return parsePrimary();
-            }
-        }
-    
-        private ASTNode parsePrimary() {
-            Token currentToken = tokens.get(position++);
-            switch (currentToken.type) {
-                case IDENTIFIER:
-                    return new ASTNode("Identifier", currentToken.value);
-                case NUMERIC_LITERAL:
-                    return new ASTNode("NumericLiteral", currentToken.value);
-                case STRING_LITERAL:
-                    return new ASTNode("StringLiteral", currentToken.value);
-                case TRUE:
-                case FALSE:
-                case NULL:
-                case NA:
-                case INF:
-                case NAN:
-                    return new ASTNode("Literal", currentToken.value);
-                case LEFT_PAREN:
-                    ASTNode node = parseExpression();
-                    match(TokenType.RIGHT_PAREN);
-                    return node;
-                default:
-                    throw new IllegalArgumentException("Unexpected token: " + currentToken);
-            }
-        }
-    
-        private ASTNode parseBlock() {
-            ASTNode node = new ASTNode("Block", null);
-            match(TokenType.LEFT_BRACE);
-            while (position < tokens.size() && tokens.get(position).type != TokenType.RIGHT_BRACE) {
-                node.addChild(parseStatement());
-            }
-            match(TokenType.RIGHT_BRACE);
-            return node;
-        }
-    
-        private void match(TokenType expectedType) {
-            if (tokens.get(position).type != expectedType) {
-                throw new IllegalArgumentException("Expected token: " + expectedType + ", but found: " + tokens.get(position).type);
-            }
-            position++;
-        }
-    }
-
-    
-    // Main method for testing 
-    // public static void main(String[] args) {
-    //     // Example R code with various elements, including potential errors
-    //     try {
-    //         String rCode = readFile("./lex.r");
-    //         RLexer3 lexer = new RLexer3(rCode);
-    //         List<Token> tokens = lexer.lex();
-    //         printTokenLineByLine(tokens);
-    //         lexer.printGroupedTokens();
-
-
-    //         Parser parser = new Parser(tokens);
-    //         ASTNode ast = parser.parse();
-
-    //         System.out.println(ast);
-    //     } catch (IOException e) {
-    //         System.err.println("Error during lexical analysis: " + e.getMessage());
-    //         e.printStackTrace(); // Print the stack trace for debugging
-    //     }
-    // }
 }

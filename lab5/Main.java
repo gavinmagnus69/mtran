@@ -95,9 +95,9 @@ public class Main {
             String rCode = RLexer3.readFile("./test.r");
             RLexer3 lexer = new RLexer3(rCode);
             List<RLexer3.Token> tokens = lexer.lex();
-            RLexer3.printTokenLineByLine(tokens);
-            lexer.printGroupedTokens();
-
+            // RLexer3.printTokenLineByLine(tokens);
+            // lexer.printGroupedTokens();
+            lexer.PrintLexicalErrors();
             //////////////////////////////////
             /// PARSER
             Parser parser = new Parser(tokens);
