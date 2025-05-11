@@ -30,6 +30,7 @@ public class RLexer3 {
         EOF, // End of File
         // Error
         ERROR // For lexical errors
+        , RETURN
     }
 
     // Token class to store token information
@@ -151,6 +152,7 @@ public class RLexer3 {
             case "NA": addToken(TokenType.NA, identifier); break;
             case "Inf": addToken(TokenType.INF, identifier); break;
             case "NaN": addToken(TokenType.NAN, identifier); break;
+            case "return": addToken(TokenType.RETURN, identifier); break;
             default: addToken(TokenType.IDENTIFIER, identifier);
         }
         return currentPosition;

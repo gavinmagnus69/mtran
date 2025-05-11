@@ -123,6 +123,30 @@ public class Parser {
         }
     }
 
+    public class IndexExpression extends Expression {
+        public final Expression object;
+        public final Expression index; // Or List<Expression> for multiple indices like m[1,2]
+        public final boolean isDoubleBracket;
+
+        public IndexExpression(Expression object, Expression index, boolean isDoubleBracket) {
+            this.object = object;
+            this.index = index;
+            this.isDoubleBracket = isDoubleBracket;
+        }
+    }
+
+    public class ReturnStatement extends Expression { // Or extends Statement if you have that base
+        public final RLexer3.Token keyword;
+        public final Expression value; // Can be null
+
+        public ReturnStatement(RLexer3.Token keyword, Expression value) {
+            this.keyword = keyword;
+            this.value = value;
+        }
+    }
+
+
+
     private final List<RLexer3.Token> tokens;
     private int current = 0;
 
@@ -132,34 +156,26 @@ public class Parser {
 
     public Expression parse() {
         try {
-            List<Expression> expressions = new ArrayList<>();
+            List<Expression> programStatements = new ArrayList<>();
             while (!isAtEnd()) {
                 try {
-                    Expression expr = expression();
-                    if (expr != null) {
-                        expressions.add(expr);
-                    }
+                    programStatements.add(statement()); // Parse one full statement
+                    match(RLexer3.TokenType.SEMICOLON); // Optional semicolon after each top-level statement
                 } catch (ParseError e) {
                     System.err.println(e.getMessage());
                     synchronize();
                 }
-                match(RLexer3.TokenType.SEMICOLON);
             }
-            return new BlockExpression(expressions);
+            return new BlockExpression(programStatements);
         } catch (ParseError e) {
-        
             System.err.println(e.getMessage());
             synchronize();
             return null;
         }
     }
 
-    private Expression expression() {
-        if (match(RLexer3.TokenType.IF)) return ifExpression();
-        if (match(RLexer3.TokenType.WHILE)) return whileExpression();
-        if (match(RLexer3.TokenType.FOR)) return forExpression();
-        if (match(RLexer3.TokenType.LEFT_BRACE)) return blockExpression();
 
+    private Expression expression() {
         return assignment();
     }
 
@@ -189,19 +205,41 @@ public class Parser {
 
     private Expression postfix(Expression expr) {
         while (true) {
-            if (match(RLexer3.TokenType.MEMBER)) {  // $
+            if (match(RLexer3.TokenType.MEMBER)) {
                 RLexer3.Token member = consume(RLexer3.TokenType.IDENTIFIER, "Expect member name after '$'.");
                 expr = new MemberAccess(expr, member);
             } else if (match(RLexer3.TokenType.LEFT_PAREN)) {
                 List<Expression> args = new ArrayList<>();
                 if (!check(RLexer3.TokenType.RIGHT_PAREN)) {
-                    do {
-                        args.add(expression());
-                    } while (match(RLexer3.TokenType.COMMA));
+                    args.add(expression()); // First argument
+                    while (match(RLexer3.TokenType.COMMA)) {
+                        args.add(expression()); // Subsequent arguments
+                    }
                 }
                 consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
                 expr = new FunctionCall(expr, args);
-            } else {
+            } else if (match(RLexer3.TokenType.LEFT_BRACKET)) { // For single bracket '['
+                // Check if it's actually a double bracket if your lexer doesn't distinguish
+                if (check(RLexer3.TokenType.LEFT_BRACKET)) { // If next is also '['
+                    advance(); // Consume the second '['
+                    Expression indexExpr = expression(); // Parse index for '[[]]'
+                    // Expect two RIGHT_BRACKETs for ']]'
+                    consume(RLexer3.TokenType.RIGHT_BRACKET, "Expect ']' for inner ']]'.");
+                    consume(RLexer3.TokenType.RIGHT_BRACKET, "Expect ']' for outer ']]'.");
+                    expr = new IndexExpression(expr, indexExpr, true); // isDoubleBracket = true
+                } else { // Single bracket
+                    Expression indexExpr = expression(); // Parse index for '[]'
+                    consume(RLexer3.TokenType.RIGHT_BRACKET, "Expect ']' after index.");
+                    expr = new IndexExpression(expr, indexExpr, false); // isDoubleBracket = false
+                }
+            }
+            // If your lexer has DBL_LEFT_BRACKET and DBL_RIGHT_BRACKET:
+            // else if (match(RLexer3.TokenType.DBL_LEFT_BRACKET)) {
+            //     Expression indexExpr = expression();
+            //     consume(RLexer3.TokenType.DBL_RIGHT_BRACKET, "Expect ']]' after index.");
+            //     expr = new IndexExpression(expr, indexExpr, true);
+            // }
+            else {
                 break;
             }
         }
@@ -209,15 +247,14 @@ public class Parser {
     }
 
 
-    private Expression multiplicative() {
-        Expression expr = primary();
 
-        while (match(RLexer3.TokenType.MULTIPLY, RLexer3.TokenType.DIVIDE)) {
+    private Expression multiplicative() {
+        Expression expr = primary(); // Or whatever your next lower precedence level is
+        while (match(RLexer3.TokenType.MULTIPLY, RLexer3.TokenType.DIVIDE, RLexer3.TokenType.MODULO)) { 
             RLexer3.Token operator = previous();
-            Expression right = primary();
+            Expression right = primary(); // Or next lower precedence level
             expr = new BinaryExpression(expr, operator, right);
         }
-
         return expr;
     }
 
@@ -244,68 +281,84 @@ public class Parser {
         return expr;
     }
 
-    
+    private Expression statement() {
+        if (check(RLexer3.TokenType.IF)) {
+            match(RLexer3.TokenType.IF); // Consume IF
+            return ifExpression();        // Let ifExpression handle the rest
+        }
+        if (check(RLexer3.TokenType.WHILE)) {
+            match(RLexer3.TokenType.WHILE);
+            return whileExpression();
+        }
+        if (check(RLexer3.TokenType.FOR)) {
+            match(RLexer3.TokenType.FOR);
+            return forExpression();
+        }
+        if (check(RLexer3.TokenType.LEFT_BRACE)) {
+            // blockExpression will consume the LEFT_BRACE
+            return blockExpression();
+        }
+        if (check(RLexer3.TokenType.RETURN)) { // Make sure RETURN token exists and lexer produces it
+            match(RLexer3.TokenType.RETURN);
+            RLexer3.Token keyword = previous();
+            Expression value = null;
+            // Check if there's a value to return, not just 'return;' or 'return }'
+            if (!isAtEnd() && !check(RLexer3.TokenType.RIGHT_BRACE) && !check(RLexer3.TokenType.SEMICOLON) ) {
+                value = expression();
+            }
+            return new ReturnStatement(keyword, value);
+        }
+        // Default: an expression statement (e.g., assignment, function call, bare value)
+        Expression exprStmt = expression(); // Parse an expression
+        // No explicit semicolon consumption here; top-level parse() or blockExpression() handles it.
+        return exprStmt;
+    }
+
+
     private Expression primary() {
-        if (match(RLexer3.TokenType.FUNCTION)) {
+        Expression exprNode;
+
+        if (match(RLexer3.TokenType.TRUE, RLexer3.TokenType.FALSE,
+                RLexer3.TokenType.NULL, RLexer3.TokenType.NA,
+                RLexer3.TokenType.INF, RLexer3.TokenType.NAN)) {
+            exprNode = new Identifier(previous()); // Or dedicated Literal nodes for these
+        } else if (match(RLexer3.TokenType.NUMERIC_LITERAL)) {
+            exprNode = new NumberLiteral(previous());
+        } else if (match(RLexer3.TokenType.STRING_LITERAL)) {
+            exprNode = new StringLiteral(previous());
+        } else if (match(RLexer3.TokenType.IDENTIFIER)) {
+            exprNode = new Identifier(previous());
+        } else if (match(RLexer3.TokenType.LEFT_PAREN)) { // Grouping: (expression)
+            Expression groupedExpression = expression();
+            consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after grouped expression.");
+            exprNode = groupedExpression;
+        } else if (match(RLexer3.TokenType.FUNCTION)) { // function_definition
             consume(RLexer3.TokenType.LEFT_PAREN, "Expected '(' after 'function'.");
-    
             List<RLexer3.Token> parameters = new ArrayList<>();
-    
             if (!check(RLexer3.TokenType.RIGHT_PAREN)) {
                 do {
                     RLexer3.Token param = consume(RLexer3.TokenType.IDENTIFIER, "Expected parameter name.");
                     parameters.add(param);
                 } while (match(RLexer3.TokenType.COMMA));
             }
-    
             consume(RLexer3.TokenType.RIGHT_PAREN, "Expected ')' after parameters.");
-    
-            // The function body should be a block expression
-            Expression bodyExpr = expression();
-    
-            if (!(bodyExpr instanceof BlockExpression)) {
-                throw error("Expected block '{...}' as function body.");
+
+            BlockExpression bodyNode;
+            if (check(RLexer3.TokenType.LEFT_BRACE)) {
+                bodyNode = (BlockExpression) blockExpression(); // blockExpression consumes { and }
+            } else {
+                Expression singleExprBody = expression();
+                List<Expression> exprList = new ArrayList<>();
+                exprList.add(singleExprBody);
+                bodyNode = new BlockExpression(exprList);
             }
-    
-            return new FunctionExpression(parameters, (BlockExpression) bodyExpr);
+            exprNode = new FunctionExpression(parameters, bodyNode);
+        } else {
+            throw error("Expected primary expression (e.g., number, string, identifier, '(', 'function', TRUE/FALSE/NULL).");
         }
-        if (match(RLexer3.TokenType.TRUE, RLexer3.TokenType.FALSE, RLexer3.TokenType.NULL,
-            RLexer3.TokenType.NA, RLexer3.TokenType.INF, RLexer3.TokenType.NAN)) {
-            return new Identifier(previous()); 
-        }
-        if (match(RLexer3.TokenType.NUMERIC_LITERAL)) {
-            return new NumberLiteral(previous());
-        }
-
-        if (match(RLexer3.TokenType.STRING_LITERAL)) {
-            return new StringLiteral(previous());
-        }
-
-        if (match(RLexer3.TokenType.IDENTIFIER)) {
-            RLexer3.Token name = previous();
-
-            if (match(RLexer3.TokenType.LEFT_PAREN)) {
-                List<Expression> args = new ArrayList<>();
-                if (!check(RLexer3.TokenType.RIGHT_PAREN)) {
-                    do {
-                        args.add(expression());
-                    } while (match(RLexer3.TokenType.COMMA));
-                }
-                consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
-                return new FunctionCall(new Identifier(name), args);
-            }
-            Expression expr = new Identifier(name);
-            return postfix(expr);
-        }
-
-        if (match(RLexer3.TokenType.LEFT_PAREN)) {
-            Expression expr = expression();
-            consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after expression.");
-            return postfix(expr);
-        }
-
-        throw error("Expected expression.");
+        return postfix(exprNode); // Apply postfix operations
     }
+
 
 
     public class ParseError extends RuntimeException {
@@ -317,43 +370,49 @@ public class Parser {
         }
     }
     private Expression ifExpression() {
+           // IF token was already consumed by statement()
         consume(RLexer3.TokenType.LEFT_PAREN, "Expect '(' after 'if'.");
-        Expression condition = expression();
-        consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after condition.");
+        Expression condition = expression(); // Condition is an expression
+        consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after if condition.");
 
-        Expression thenBranch = expression();
+        Expression thenBranch = statement(); // Then branch is a statement
         Expression elseBranch = null;
 
         if (match(RLexer3.TokenType.ELSE)) {
-            elseBranch = expression();
+            elseBranch = statement(); // Else branch is also a statement
         }
-
         return new IfExpression(condition, thenBranch, elseBranch);
     }
     private Expression whileExpression() {
+        // WHILE token consumed by statement()
         consume(RLexer3.TokenType.LEFT_PAREN, "Expect '(' after 'while'.");
         Expression condition = expression();
-        consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after condition.");
-        Expression body = expression();
+        consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after while condition.");
+        Expression body = statement(); // Body is a statement
         return new WhileExpression(condition, body);
     }
-    private Expression forExpression() {
+   private Expression forExpression() {
+        // FOR token consumed by statement()
         consume(RLexer3.TokenType.LEFT_PAREN, "Expect '(' after 'for'.");
-        RLexer3.Token variable = consume(RLexer3.TokenType.IDENTIFIER, "Expect loop variable.");
-        consume(RLexer3.TokenType.IN, "Expect 'in' after variable.");
-        Expression iterable = expression();
-        consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after iterable.");
-        Expression body = expression();
+        RLexer3.Token variable = consume(RLexer3.TokenType.IDENTIFIER, "Expect loop variable name.");
+        consume(RLexer3.TokenType.IN, "Expect 'in' after loop variable.");
+        Expression iterable = expression(); // Iterable is an expression
+        consume(RLexer3.TokenType.RIGHT_PAREN, "Expect ')' after for loop iterable.");
+        Expression body = statement(); // Body is a statement
         return new ForExpression(variable, iterable, body);
     }
+
     private Expression blockExpression() {
-        List<Expression> expressions = new ArrayList<>();
-        while (!check(RLexer3.TokenType.RIGHT_BRACE) && !isAtEnd()) {
-            expressions.add(expression());
-            match(RLexer3.TokenType.SEMICOLON); // optional
+        consume(RLexer3.TokenType.LEFT_BRACE, "Expect '{' to start a block."); // Consume { here
+        List<Expression> statementsInBlock = new ArrayList<>();
+        while (!isAtEnd() && !check(RLexer3.TokenType.RIGHT_BRACE)) {
+            statementsInBlock.add(statement()); // A block contains statements
+            // Optional semicolons within a block. R is flexible.
+            // Newlines often suffice. If your parser requires semicolons, this is it.
+            match(RLexer3.TokenType.SEMICOLON);
         }
-        consume(RLexer3.TokenType.RIGHT_BRACE, "Expect '}' after block.");
-        return new BlockExpression(expressions);
+        consume(RLexer3.TokenType.RIGHT_BRACE, "Expect '}' to end a block.");
+        return new BlockExpression(statementsInBlock);
     }
 
     // Utility functions

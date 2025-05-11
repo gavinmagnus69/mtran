@@ -1,7 +1,7 @@
 public class ReturnValue extends RuntimeException {
-    public final Object value;
-
+    final Object value;
     public ReturnValue(Object value) {
+        super(null, null, false, false); // No message, cause, suppression, or writable stack trace
         this.value = value;
     }
 }
