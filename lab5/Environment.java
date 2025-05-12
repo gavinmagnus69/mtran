@@ -30,9 +30,12 @@ public class Environment {
 
     // Assigns to existing variable in current or enclosing scope, or defines in current if not found
         public void assign(String name, Object value) {
-            if (values.containsKey(name)) {
-    
-                values.put(name, value);
+           if (values.containsKey(name)) {
+                values.put(name, value); // Update in current scope
+            } else if (enclosing != null) {
+                enclosing.assign(name, value); // Try to assign in outer scope
+            } else {
+                throw new RuntimeException("Undefined variable '" + name + "'");
             }
 
         }

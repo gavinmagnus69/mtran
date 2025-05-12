@@ -247,9 +247,13 @@ public class Parser {
     }
 
 
+    private Expression unary() {
+        return primary();
+    }
+
 
     private Expression multiplicative() {
-        Expression expr = primary(); // Or whatever your next lower precedence level is
+        Expression expr = unary(); // Or whatever your next lower precedence level is
         while (match(RLexer3.TokenType.MULTIPLY, RLexer3.TokenType.DIVIDE, RLexer3.TokenType.MODULO)) { 
             RLexer3.Token operator = previous();
             Expression right = primary(); // Or next lower precedence level

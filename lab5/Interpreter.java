@@ -17,6 +17,19 @@ public class Interpreter {
     }
 
 
+    private static Double coerceToDouble(Object value) {
+        if (value instanceof String s) {
+            try {
+                return Double.parseDouble(s);
+            } catch (NumberFormatException e) {
+                return Double.NaN;
+            }
+        }
+        if (value instanceof Number n) return n.doubleValue();
+        if (value instanceof Boolean b) return b ? 1.0 : 0.0;
+        return Double.NaN;
+    }
+
     public Interpreter() {
         // Define R's built-in constants
         globals.define("TRUE", true);
@@ -25,11 +38,25 @@ public class Interpreter {
         // globals.define("NA", NaObject.INSTANCE); // For more R-like NA
         globals.define("Inf", Double.POSITIVE_INFINITY);
         globals.define("NaN", Double.NaN);
+        globals.define("as.numeric", new NativeFunction("as.numeric", 1, (interpreter, args) -> {
+            Object input = args.get(0);
+
+            if (input instanceof List<?> list) {
+                List<Object> result = new ArrayList<>();
+                for (Object item : list) {
+                    result.add(coerceToDouble(item));
+                }
+                return result;
+            } else {
+                return coerceToDouble(input);
+            }
+        }));
         globals.define("sapply", new NativeFunction("sapply", 2, (interpreter, args) -> {
             Object input = args.get(0);
             Object func = args.get(1);
             
-            System.out.println(">>> sapply: input is of type = " + (input == null ? "null" : input.getClass().getSimpleName()));            
+            // System.out.println(">>> sapply: input is of type = " + (input == null ? "null" : input.getClass().getSimpleName()));            
+            
             if (!(input instanceof List<?> iterable)) {
                 throw new RuntimeException("sapply: first argument must be a list or vector.");
             }
@@ -49,21 +76,29 @@ public class Interpreter {
             return results; // Simplified: returns a list. R tries to "simplify" too (to vector/matrix), which you can skip for now.
         }));
 
-        // Define built-in "native" functions
-        globals.define("cat", new NativeFunction("cat", -1, (interpreter, args) -> { // -1 for variadic
+        globals.define("cat", new NativeFunction("cat", -1, (interpreter, args) -> {
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < args.size(); i++) {
-                sb.append(interpreter.stringify(args.get(i)));
-                if (i < args.size() - 1) {
-                    // R's cat default sep is " ", but this is simplified
-                    // To handle 'sep', 'file', etc. args, NativeFunction needs more sophisticated arg parsing
-                }
+                Object arg = args.get(i);
+
+                // Use raw string without quotes
+                String str = interpreter.stringifyRaw(arg);
+                sb.append(str);
+                if (i < args.size() - 1) sb.append(" ");
             }
-            // R's cat has a 'sep' argument. Here, we just print.
-            // Also, 'cat' prints to stdout, doesn't usually add newline unless in args.
-            System.out.print(sb.toString()); // Using print, not println
-            return null; // R's cat returns NULL invisibly
+
+            // Handle newline
+            String output = sb.toString();
+            if (output.contains("\n")) {
+                // At least one new line already present: just print as-is
+                System.out.print(output);
+            } else {
+                System.out.print(output);
+            }
+            return null;
         }));
+
+
 
         globals.define("print", new NativeFunction("print", 1, (interpreter, args) -> {
             if (args.isEmpty()) throw new RuntimeException("print expects 1 argument.");
@@ -80,19 +115,6 @@ public class Interpreter {
         // `sapply` and `as.numeric` are more complex and would require more infrastructure
         // (e.g., proper vector/list handling, type coercion logic).
         // Placeholder for as.numeric:
-        globals.define("as.numeric", new NativeFunction("as.numeric", 1, (interpreter, args) -> {
-            if (args.isEmpty()) throw new RuntimeException("as.numeric expects 1 argument.");
-            Object arg = args.get(0);
-            if (arg instanceof String s) {
-                try {
-                    return Double.parseDouble(s);
-                } catch (NumberFormatException e) { return Double.NaN; /* Or throw error */ }
-            }
-            if (arg instanceof Number n) return n.doubleValue();
-            if (arg instanceof Boolean b) return b ? 1.0 : 0.0;
-            // Basic coercion, R has more rules
-            return Double.NaN; // Or throw error for uncoercible types
-        }));
         
         // Placeholder for paste (simplified, no 'sep' or 'collapse' handling here)
         globals.define("paste", new NativeFunction("paste", -1, (interpreter, args) -> {
@@ -158,8 +180,19 @@ public class Interpreter {
         }
 
         if (expr instanceof Parser.BinaryExpression bin) {
+
+
+            
+            
+            
             Object left = evaluate(bin.left);
             Object right = evaluate(bin.right);
+    
+    
+            // System.out.println("DEBUG: evaluating binary expression:");
+            // System.out.println("  OPERATOR = " + bin.operator.type);
+            // System.out.println("  LEFT     = " + stringify(left));
+            // System.out.println("  RIGHT    = " + stringify(right));
 
             // Basic type checking for arithmetic
             if (bin.operator.type == RLexer3.TokenType.PLUS ||
@@ -184,21 +217,17 @@ public class Interpreter {
                 case PLUS -> (Double) left + (Double) right;
                 case SEQUENCE -> {
                     if (!(left instanceof Double) || !(right instanceof Double)) {
-                        throw new RuntimeException("Operands for ':' must be numeric. Got: " + stringify(left) + " and " + stringify(right));
+                        throw new RuntimeException("Operands for : must be numeric");
                     }
                     double start = (Double) left;
                     double end = (Double) right;
-                    List<Double> sequence = new ArrayList<>();
+                    List<Double> result = new ArrayList<>();
                     if (start <= end) {
-                        for (double i = start; i <= end; i++) {
-                            sequence.add(i);
-                        }
+                        for (double i = start; i <= end; i++) result.add(i);
                     } else {
-                        for (double i = start; i >= end; i--) {
-                            sequence.add(i);
-                        }
+                        for (double i = start; i >= end; i--) result.add(i);
                     }
-                    yield sequence;
+                    yield result;
                 }
                 case MINUS -> (Double) left - (Double) right;
                 case MULTIPLY -> (Double) left * (Double) right;
@@ -260,11 +289,16 @@ public class Interpreter {
         }
 
         if (expr instanceof Parser.FunctionCall call) {
+            
             Object callee = evaluate(call.function); // Evaluate the expression that should yield a function
-
+            // System.out.println(">>> Evaluating function call: " + stringify(call.function));
             List<Object> arguments = new ArrayList<>();
             for (Parser.Expression argExpr : call.arguments) {
-                arguments.add(evaluate(argExpr));
+                Object arg = evaluate(argExpr);
+                arguments.add(arg);
+                // System.out.println(">>> Argument evaluated to: " + stringify(arg) + " (" +
+                //              (arg == null ? "null" : arg.getClass().getSimpleName()) + ")");
+            
             }
 
             if (!(callee instanceof Callable functionToCall)) {
@@ -362,15 +396,37 @@ public class Interpreter {
             Object index = evaluate(indexAccess.index); // R indexing can be complex (numeric, logical, character vectors)
 
             if (object instanceof List<?> list) {
-                if (index instanceof Double dIndex) {
-                    int idx = dIndex.intValue();
-                    if (idx < 1 || idx > list.size()) { // R is 1-based
-                        // R returns NULL or NA for out-of-bounds, or error depending on context/subset type
-                        throw new RuntimeException("Index out of bounds: " + idx + " for list of size " + list.size());
+                if (index instanceof List<?> indices) {
+                    List<Object> result = new ArrayList<>();
+
+                    if (!indices.isEmpty() && indices.get(0) instanceof Boolean) {
+                        if (indices.size() != list.size()) {
+                            throw new RuntimeException("Logical index length does not match list size.");
+                        }
+                        for (int i = 0; i < indices.size(); i++) {
+                            if (Boolean.TRUE.equals(indices.get(i))) {
+                                result.add(list.get(i)); // Keep the element
+                            }
+                        }
+                        return result;
                     }
-                    return list.get(idx - 1); // Adjust to 0-based Java
+
+                    for (Object idxObj : indices) {
+                        if (!(idxObj instanceof Double d)) {
+                            throw new RuntimeException("Indices must be numeric or logical");
+                        }
+                        int idx = d.intValue();
+                        if (idx < 1 || idx > list.size()) continue;
+                        result.add(list.get(idx - 1));
+                    }
+
+                    return result;
+                }
+                else if (index instanceof Double dIndex) {
+                    int idx = dIndex.intValue();
+                    return list.get(idx - 1);
                 } else {
-                    throw new RuntimeException("List index must be numeric. Got: " + stringify(index));
+                    throw new RuntimeException("List index must be numeric or list of numeric.");
                 }
             }
             // Add support for other indexable types (vectors, matrices)
@@ -421,17 +477,26 @@ public class Interpreter {
         if (object instanceof String s) return "\"" + s + "\""; // R prints strings with quotes in some contexts
         if (object instanceof FunctionValue) return "<user_function>";
         if (object instanceof NativeFunction nf) return "<native_function: " + nf.getName() + ">";
-        if (object instanceof List<?> list) { // Basic list printing
-            StringBuilder sb = new StringBuilder("list(");
+        if (object instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder();
             for (int i = 0; i < list.size(); i++) {
                 sb.append(stringify(list.get(i)));
                 if (i < list.size() - 1) sb.append(", ");
             }
-            sb.append(")");
             return sb.toString();
         }
         return Objects.toString(object);
     }
+
+
+    public String stringifyRaw(Object object) {
+        if (object == null) return "";
+        if (object instanceof String s) {
+            return s.replace("\\n", "\n"); // If you still get literal \n, fix here
+        }
+        return stringify(object); // fallback
+    }
+
 
     // Environment class should be an inner class or a separate file
     // Ensure Environment has assignOrDefine(String name, Object value)
